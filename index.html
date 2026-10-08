@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PeerJS Grid Sync</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+  <div class="container">
+    <h2>PeerJS Grid Sync</h2>
+
+    <!-- ID Badge -->
+    <div class="id-badge">
+      <strong>Your ID:</strong>
+      <span id="my-id">Generating...</span>
+    </div>
+
+    <!-- Connect Controls -->
+    <div class="input-group">
+      <input type="text" id="peer-id-input" placeholder="Enter remote Peer ID">
+      <button id="connect-btn">Connect</button>
+    </div>
+
+    <!-- Status Message -->
+    <div id="status" class="status-msg">Not connected</div>
+
+    <!-- Interactive Grid Container -->
+    <div class="grid-wrapper">
+      <div id="grid" class="grid"></div>
+    </div>
+
+    <!-- Send Action Button -->
+    <button id="send-btn" class="full-width-btn" disabled>Send Tile Color</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
