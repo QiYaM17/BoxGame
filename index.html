@@ -3,38 +3,68 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PeerJS Grid Sync</title>
+  <title>Colourful Boxes - PvP Multiplayer</title>
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
-  <div class="container">
-    <h2>PeerJS Grid Sync</h2>
+<div class="game-container" id="main">
 
-    <!-- ID Badge -->
+  <!-- Left Panel: Featured Shapes & Simultaneous Scores -->
+  <div class="container">
+    <h2>Featured Shapes</h2>
+    <p class="instruction-text">Match these shapes on the board to score! (Sum × Count)</p>
+    
+    <div id="featured-shapes-container" class="featured-container">
+      <!-- Populated dynamically -->
+    </div>
+
+    <div class="score-board">
+      <div class="score-card">
+        <span>You:</span> <span id="my-score">0</span>
+      </div>
+      <div class="score-card">
+        <span>Opponent:</span> <span id="opponent-score">0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Middle Panel: Shared PvP Board & Turn Controls -->
+  <div class="container">
+    <h2>Colourful Boxes (PvP)</h2>
+
     <div class="id-badge">
       <strong>Your ID:</strong>
       <span id="my-id">Generating...</span>
     </div>
 
-    <!-- Connect Controls -->
     <div class="input-group">
       <input type="text" id="peer-id-input" placeholder="Enter remote Peer ID">
       <button id="connect-btn">Connect</button>
     </div>
 
-    <!-- Status Message -->
-    <div id="status" class="status-msg">Not connected</div>
+    <div id="status" class="status-msg">Not connected. Waiting for peer...</div>
+    <div id="turn-banner" class="turn-banner waiting">Waiting for connection...</div>
 
-    <!-- Interactive Grid Container -->
     <div class="grid-wrapper">
-      <div id="grid" class="grid"></div>
+      <div id="grid" class="grid main-grid"></div>
     </div>
 
-    <!-- Send Action Button -->
-    <button id="send-btn" class="full-width-btn" disabled>Send Tile Color</button>
+    <button id="submit-turn-btn" class="full-width-btn" disabled>Submit & End Turn</button>
   </div>
+
+  <!-- Right Panel: Next 3 Blocks Queue -->
+  <div class="container">
+    <h2>Next Blocks</h2>
+    <p class="instruction-text">Pick one block per turn from your upcoming queue:</p>
+    
+    <div id="next-queue" class="next-queue-container">
+      <!-- Populated dynamically -->
+    </div>
+  </div>
+
+</div>
 
   <script src="script.js"></script>
 </body>

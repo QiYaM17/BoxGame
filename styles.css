@@ -15,29 +15,43 @@ body {
   padding: 20px;
 }
 
+.game-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  width: 100%;
+  max-width: 1400px;
+}
+
 .container {
   background: #ffffff;
   width: 100%;
-  max-width: 480px;
   padding: 24px;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 h2 {
-  font-size: 1.4rem;
-  margin-bottom: 16px;
+  font-size: 1.3rem;
+  margin-bottom: 8px;
   text-align: center;
+}
+
+.instruction-text {
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 12px;
 }
 
 .id-badge {
   background-color: #eef2ff;
   border: 1px solid #c7d2fe;
   color: #3730a3;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 8px;
-  font-size: 0.95rem;
-  margin-bottom: 16px;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
   display: flex;
   justify-content: space-between;
 }
@@ -45,25 +59,31 @@ h2 {
 .input-group {
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 input[type="text"] {
   flex: 1;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   outline: none;
+  font-size: 0.9rem;
 }
 
 button {
   background-color: #4f46e5;
   color: white;
   border: none;
-  padding: 10px 16px;
+  padding: 8px 14px;
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+button:hover {
+  background-color: #4338ca;
 }
 
 button:disabled {
@@ -73,13 +93,25 @@ button:disabled {
 
 .status-msg {
   text-align: center;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #6b7280;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   font-style: italic;
 }
 
-/* --- Dynamic N x N Grid Layout --- */
+.turn-banner {
+  text-align: center;
+  font-weight: bold;
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+  font-size: 0.9rem;
+}
+
+.turn-banner.waiting { background: #fef3c7; color: #b45309; }
+.turn-banner.your-turn { background: #d1fae5; color: #065f46; }
+.turn-banner.opponent-turn { background: #fee2e2; color: #991b1b; }
+
 .grid-wrapper {
   display: flex;
   justify-content: center;
@@ -88,7 +120,6 @@ button:disabled {
 
 .grid {
   display: grid;
-  /* --grid-size set dynamically in JavaScript */
   grid-template-columns: repeat(var(--grid-size, 5), 1fr);
   gap: 6px;
   width: 100%;
@@ -103,25 +134,15 @@ button:disabled {
   cursor: pointer;
   transition: transform 0.1s, border-color 0.2s;
   border: 2px solid transparent;
-
-  /* Force 1:1 square aspect ratio */
   aspect-ratio: 1 / 1;
-
-  /* Center the 6-digit text inside the tile */
   display: flex;
   align-items: center;
   justify-content: center;
-
-  /* Responsive typography so text fits inside the box */
-  font-size: clamp(0.6rem, 2.5vw, 0.85rem);
+  font-size: 0.9rem;
   font-family: monospace;
   font-weight: bold;
   color: #111827;
-
-  /* Prevent text selection and wrapping from stretching tiles */
   user-select: none;
-  overflow: hidden;
-  white-space: nowrap;
 }
 
 .tile:hover {
@@ -129,8 +150,128 @@ button:disabled {
 }
 
 .tile.selected {
-  border-color: #111827;
+  border-color: #4f46e5;
   transform: scale(0.95);
+  box-shadow: 0 0 8px rgba(79, 70, 229, 0.4);
+}
+
+/* Clearing Animation for Completed Shapes */
+@keyframes popAndFade {
+  0% { transform: scale(1); opacity: 1; background-color: #facc15; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+  100% { transform: scale(0); opacity: 0; }
+}
+
+.clearing-animation {
+  animation: popAndFade 0.4s ease-out forwards;
+}
+
+/* Featured Shapes Layout */
+.featured-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.shape-preview-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.shape-title {
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+.mini-grid {
+  display: grid;
+  gap: 3px;
+  width: 60px;
+}
+
+.mini-tile {
+  background-color: #e2e8f0;
+  border-radius: 3px;
+  aspect-ratio: 1/1;
+}
+
+/* Scoreboard */
+.score-board {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.score-card {
+  flex: 1;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #1e293b;
+}
+
+/* Queue Panel */
+.next-queue-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.queue-block {
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+  color: #111827;
+  font-weight: bold;
+  font-family: monospace;
+}
+
+.queue-block:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.queue-block.selected {
+  border-color: #111827;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+.queue-label {
+  background: rgba(255, 255, 255, 0.85);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+/* Animated Rainbow Block */
+@keyframes rainbowGlow {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+
+.rainbow-tile {
+  background: linear-gradient(135deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7);
+  background-size: 300% 300%;
+  animation: rainbowGlow 4s ease infinite;
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
 
 .full-width-btn {
