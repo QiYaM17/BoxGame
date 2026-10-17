@@ -1,5 +1,6 @@
 // --- Game Configuration ---
 const GRID_SIZE = 5;
+const WINNING_SCORE = 500;
 let selectedQueueIndex = null;
 let selectedTileIndex = null;
 let conn = null;
@@ -7,9 +8,11 @@ let conn = null;
 let myScore = 0;
 let opponentScore = 0;
 let isMyTurn = false; // Host starts first
+let isGameOver = false;
 
 const boardState = Array(GRID_SIZE * GRID_SIZE).fill(null);
 let nextQueue = [];
+let pendingMatches = []; 
 
 // Fewer, vibrant colors + Rainbow wildcard
 const ALLOWED_COLORS = [
@@ -19,14 +22,46 @@ const ALLOWED_COLORS = [
   { name: 'Yellow', code: '#eab308' }
 ];
 
-// Pool of possible featured shapes
-const ALL_POSSIBLE_SHAPES = [
-  { id: 'sq2x2', offsets: [{r:0, c:0}, {r:0, c:1}, {r:1, c:0}, {r:1, c:1}], name: "2x2 Square" },
-  { id: 'lineH3', offsets: [{r:0, c:0}, {r:0, c:1}, {r:0, c:2}], name: "Horizontal Line (3)" },
-  { id: 'lineV3', offsets: [{r:0, c:0}, {r:1, c:0}, {r:2, c:0}], name: "Vertical Line (3)" },
-  { id: 'lshape', offsets: [{r:0, c:0}, {r:1, c:0}, {r:1, c:1}], name: "L-Shape" },
-  { id: 'diag3', offsets: [{r:0, c:0}, {r:1, c:1}, {r:2, c:2}], name: "Diagonal (3)" }
+// Helper to normalize offset coordinates
+function normalizeOffsets(offsets) {
+  let minR = Math.min(...offsets.map(o => o.r));
+  let minC = Math.min(...offsets.map(o => o.c));
+  let normalized = offsets.map(o => ({ r: o.r - minR, c: o.c - minC }));
+  normalized.sort((a, b) => a.r - b.r || a.c - b.c);
+  return normalized;
+}
+
+// Helper to generate all unique rotations for any shape
+function getRotations(baseOffsets) {
+  let orientations = [];
+  let current = baseOffsets;
+  
+  for (let i = 0; i < 4; i++) {
+    current = current.map(o => ({ r: o.c, c: -o.r }));
+    let norm = normalizeOffsets(current);
+    
+    if (!orientations.some(existing => JSON.stringify(existing) === JSON.stringify(norm))) {
+      orientations.push(norm);
+    }
+  }
+  return orientations;
+}
+
+// Raw Unique Base Shapes Pool
+const RAW_SHAPES = [
+  { id: 'sq2x2', base: [{r:0, c:0}, {r:0, c:1}, {r:1, c:0}, {r:1, c:1}], name: "2x2 Square" },
+  { id: 'line3', base: [{r:0, c:0}, {r:0, c:1}, {r:0, c:2}], name: "Line of 3" },
+  { id: 'lshape', base: [{r:0, c:0}, {r:1, c:0}, {r:1, c:1}], name: "L-Shape" },
+  { id: 'diag3', base: [{r:0, c:0}, {r:1, c:1}, {r:2, c:2}], name: "Diagonal" },
+  { id: 'tshape', base: [{r:0, c:0}, {r:0, c:1}, {r:0, c:2}, {r:1, c:1}], name: "T-Shape" }
 ];
+
+const FEATURED_POOL = RAW_SHAPES.map(shape => ({
+  id: shape.id,
+  name: shape.name,
+  previewOffsets: shape.base,
+  orientations: getRotations(shape.base)
+}));
 
 let activeFeaturedShapes = [];
 
@@ -45,9 +80,9 @@ peer.on('open', (id) => {
   document.getElementById('my-id').innerText = id;
 });
 
-// Pick 3 random shapes from the pool
+// Pick 3 distinct random shape types from the pool
 function randomizeFeaturedShapes() {
-  const shuffled = [...ALL_POSSIBLE_SHAPES].sort(() => 0.5 - Math.random());
+  const shuffled = [...FEATURED_POOL].sort(() => 0.5 - Math.random());
   activeFeaturedShapes = shuffled.slice(0, 3);
   renderFeaturedShapes();
 }
@@ -91,6 +126,7 @@ function createMainGrid() {
     }
 
     tile.addEventListener('click', () => {
+      if (isGameOver) return;
       if (!isMyTurn) {
         alert("Not your turn!");
         return;
@@ -115,7 +151,7 @@ function createMainGrid() {
   }
 }
 
-// Render 3 Featured Shapes in Left Panel
+// Render 3 Distinct Featured Shapes in Left Panel using a uniform 3x3 grid
 function renderFeaturedShapes() {
   const container = document.getElementById('featured-shapes-container');
   container.innerHTML = '';
@@ -138,7 +174,7 @@ function renderFeaturedShapes() {
         const miniTile = document.createElement('div');
         miniTile.classList.add('mini-tile');
         
-        const belongs = shape.offsets.some(o => o.r === r && o.c === c);
+        const belongs = shape.previewOffsets.some(o => o.r === r && o.c === c);
         if (belongs) {
           miniTile.style.backgroundColor = '#4f46e5';
         }
@@ -171,7 +207,7 @@ function renderQueue() {
     blockEl.innerHTML = `<span class="queue-code">${block.value} pts</span><span class="queue-label">#${index + 1}</span>`;
 
     blockEl.addEventListener('click', () => {
-      if (!isMyTurn) return;
+      if (isGameOver || !isMyTurn) return;
       selectedQueueIndex = index;
       renderQueue();
     });
@@ -180,86 +216,115 @@ function renderQueue() {
   });
 }
 
-// Check for completed featured shapes, compute score, and animate clearing matched tiles
-function checkAndClearShapes() {
-  let scoredThisCheck = 0;
-  let clearedIndices = new Set();
+// Render Opponent's Queue Preview
+function renderOpponentQueue(queueData) {
+  const previewContainer = document.getElementById('opponent-queue-preview');
+  if (!previewContainer || !queueData) return;
+  previewContainer.innerHTML = '';
+
+  queueData.forEach(block => {
+    const miniEl = document.createElement('div');
+    miniEl.classList.add('mini-queue-item');
+    if (block.isRainbow) {
+      miniEl.classList.add('rainbow-tile');
+      miniEl.innerText = block.value;
+    } else {
+      miniEl.style.backgroundColor = block.color;
+      miniEl.innerText = block.value;
+    }
+    previewContainer.appendChild(miniEl);
+  });
+}
+
+// Detect completed featured shapes that include the newly placed block index
+function detectCompletedShapes(placedIndex) {
+  let foundMatches = [];
+  let claimedIndices = new Set();
 
   activeFeaturedShapes.forEach(shape => {
-    for (let r = 0; r < GRID_SIZE; r++) {
-      for (let c = 0; c < GRID_SIZE; c++) {
-        let validFit = true;
-        let shapeBlocks = [];
-        let shapeIndices = [];
+    shape.orientations.forEach(offsets => {
+      for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
+          let validFit = true;
+          let shapeBlocks = [];
+          let shapeIndices = [];
 
-        for (let offset of shape.offsets) {
-          let tr = r + offset.r;
-          let tc = c + offset.c;
-          if (tr >= GRID_SIZE || tc >= GRID_SIZE) {
-            validFit = false;
-            break;
+          for (let offset of offsets) {
+            let tr = r + offset.r;
+            let tc = c + offset.c;
+            if (tr >= GRID_SIZE || tc >= GRID_SIZE) {
+              validFit = false;
+              break;
+            }
+            let idx = tr * GRID_SIZE + tc;
+            if (boardState[idx] === null || claimedIndices.has(idx)) {
+              validFit = false;
+              break;
+            }
+            shapeBlocks.push(boardState[idx]);
+            shapeIndices.push(idx);
           }
-          let idx = tr * GRID_SIZE + tc;
-          let tile = boardState[idx];
-          if (!tile) {
-            validFit = false;
-            break;
-          }
-          shapeBlocks.push(tile);
-          shapeIndices.push(idx);
-        }
 
-        if (validFit && shapeBlocks.length === shape.offsets.length) {
-          if (shapeIndices.some(idx => clearedIndices.has(idx))) continue;
+          if (validFit && shapeBlocks.length === offsets.length && shapeIndices.includes(placedIndex)) {
+            let baseColor = null;
+            let isMatch = true;
 
-          let baseColor = null;
-          let isMatch = true;
-
-          for (let block of shapeBlocks) {
-            if (!block.isRainbow) {
-              if (baseColor === null) {
-                baseColor = block.color;
-              } else if (baseColor !== block.color) {
-                isMatch = false;
-                break;
+            for (let block of shapeBlocks) {
+              if (!block.isRainbow) {
+                if (baseColor === null) {
+                  baseColor = block.color;
+                } else if (baseColor !== block.color) {
+                  isMatch = false;
+                  break;
+                }
               }
             }
-          }
 
-          if (isMatch) {
-            let sumValues = shapeBlocks.reduce((acc, b) => acc + b.value, 0);
-            scoredThisCheck += sumValues * shapeBlocks.length;
-            
-            shapeIndices.forEach(idx => clearedIndices.add(idx));
+            if (isMatch) {
+              let sumValues = shapeBlocks.reduce((acc, b) => acc + b.value, 0);
+              let points = sumValues * shapeBlocks.length;
+              
+              foundMatches.push({
+                shapeName: shape.name,
+                points: points,
+                indices: shapeIndices
+              });
+
+              shapeIndices.forEach(idx => claimedIndices.add(idx));
+            }
           }
         }
       }
-    }
+    });
   });
 
-  if (clearedIndices.size > 0) {
-    clearedIndices.forEach(idx => {
-      const tileEl = document.querySelector(`.main-grid .tile[data-index="${idx}"]`);
-      if (tileEl) {
-        tileEl.classList.add('clearing-animation');
-      }
-      boardState[idx] = null;
-    });
-
-    setTimeout(() => {
-      createMainGrid();
-    }, 400);
-  }
-
-  return scoredThisCheck;
+  return foundMatches;
 }
 
 function updateScoreboard() {
   document.getElementById('my-score').innerText = myScore;
   document.getElementById('opponent-score').innerText = opponentScore;
+
+  // Check Win Condition (First to 500)
+  if (!isGameOver) {
+    if (myScore >= WINNING_SCORE) {
+      triggerGameOver("You Won the Match!");
+    } else if (opponentScore >= WINNING_SCORE) {
+      triggerGameOver("Opponent Won the Match!");
+    }
+  }
+}
+
+function triggerGameOver(message) {
+  isGameOver = true;
+  document.getElementById('game-over-title').innerText = message;
+  document.getElementById('game-over-desc').innerText = `Final Score — You: ${myScore} | Opponent: ${opponentScore}`;
+  document.getElementById('game-over-modal').classList.remove('hidden');
+  document.getElementById('submit-turn-btn').disabled = true;
 }
 
 function updateTurnUI() {
+  if (isGameOver) return;
   const banner = document.getElementById('turn-banner');
   if (isMyTurn) {
     banner.innerText = "Your Turn! Place a block.";
@@ -270,23 +335,8 @@ function updateTurnUI() {
   }
 }
 
-// Submit Turn Handler
-document.getElementById('submit-turn-btn').addEventListener('click', () => {
-  if (!isMyTurn || selectedQueueIndex === null || selectedTileIndex === null) return;
-
-  const chosenBlock = nextQueue[selectedQueueIndex];
-  const targetIndex = selectedTileIndex;
-
-  boardState[targetIndex] = chosenBlock;
-
-  // Check if placement completes any featured shapes and award points locally
-  const pointsEarned = checkAndClearShapes();
-  myScore += pointsEarned;
-
-  // Replenish queue
-  nextQueue.splice(selectedQueueIndex, 1);
-  nextQueue.push(createNewBlock());
-
+// Complete turn and send update to peer
+function finalizeTurn() {
   selectedQueueIndex = null;
   selectedTileIndex = null;
   document.getElementById('submit-turn-btn').disabled = true;
@@ -294,15 +344,93 @@ document.getElementById('submit-turn-btn').addEventListener('click', () => {
   isMyTurn = false;
   updateMainGame();
 
-  // Transmit move & current score to peer
   if (conn && conn.open) {
     conn.send({
       type: 'PLAYER_MOVE',
-      index: targetIndex,
-      block: chosenBlock,
       senderScore: myScore,
-      board: boardState
+      board: boardState,
+      queue: nextQueue
     });
+  }
+}
+
+// Submit Turn Handler
+document.getElementById('submit-turn-btn').addEventListener('click', () => {
+  if (isGameOver || !isMyTurn || selectedQueueIndex === null || selectedTileIndex === null) return;
+
+  const chosenBlock = nextQueue[selectedQueueIndex];
+  const targetIndex = selectedTileIndex;
+  boardState[targetIndex] = chosenBlock;
+
+  // Replenish queue
+  nextQueue.splice(selectedQueueIndex, 1);
+  nextQueue.push(createNewBlock());
+
+  // Check if pattern completed using final placed block
+  pendingMatches = detectCompletedShapes(targetIndex);
+
+  if (pendingMatches.length > 0) {
+    showActivationModal(pendingMatches);
+  } else {
+    finalizeTurn();
+  }
+});
+
+// Show Pattern Activation Modal
+function showActivationModal(matches) {
+  const modal = document.getElementById('activation-modal');
+  const listContainer = document.getElementById('detected-patterns-list');
+  listContainer.innerHTML = '';
+
+  let totalPoints = 0;
+  matches.forEach(m => {
+    totalPoints += m.points;
+    const item = document.createElement('div');
+    item.classList.add('detected-item');
+    item.innerHTML = `<span>✨ <strong>${m.shapeName}</strong></span><span class="badge-pts">+${m.points} pts</span>`;
+    listContainer.appendChild(item);
+  });
+
+  document.getElementById('activation-desc').innerText = `You completed ${matches.length} pattern(s) with your placement, worth ${totalPoints} total points! Choose whether to collect points and clear blocks, or keep blocks on the board.`;
+  modal.classList.remove('hidden');
+}
+
+// Handle "Collect Points & Clear"
+document.getElementById('collect-btn').addEventListener('click', () => {
+  let earnedPoints = 0;
+  let allIndicesToClear = new Set();
+
+  pendingMatches.forEach(m => {
+    earnedPoints += m.points;
+    m.indices.forEach(idx => allIndicesToClear.add(idx));
+  });
+
+  myScore += earnedPoints;
+
+  allIndicesToClear.forEach(idx => {
+    const tileEl = document.querySelector(`.main-grid .tile[data-index="${idx}"]`);
+    if (tileEl) {
+      tileEl.classList.add('clearing-animation');
+    }
+    boardState[idx] = null;
+  });
+
+  setTimeout(() => {
+    document.getElementById('activation-modal').classList.add('hidden');
+    createMainGrid();
+    updateScoreboard();
+    if (!isGameOver) {
+      finalizeTurn();
+    }
+  }, 400);
+});
+
+// Handle "Keep Blocks (Skip)"
+document.getElementById('keep-btn').addEventListener('click', () => {
+  document.getElementById('activation-modal').classList.add('hidden');
+  updateScoreboard();
+  if (!isGameOver) {
+    finalizeTurn();
   }
 });
 
@@ -316,14 +444,14 @@ function updateMainGame() {
 // PeerJS Connection Management
 peer.on('connection', (incomingConn) => {
   conn = incomingConn;
-  isMyTurn = true; // Host goes first
+  isMyTurn = true;
   randomizeFeaturedShapes();
   
-  // Send initial random shapes to guest
   conn.on('open', () => {
     conn.send({
       type: 'INIT_GAME',
-      shapes: activeFeaturedShapes
+      shapes: activeFeaturedShapes,
+      queue: nextQueue
     });
     document.getElementById('status').innerText = 'Connected to Peer!';
     updateMainGame();
@@ -336,7 +464,7 @@ document.getElementById('connect-btn').addEventListener('click', () => {
   const targetId = document.getElementById('peer-id-input').value;
   if (targetId) {
     conn = peer.connect(targetId);
-    isMyTurn = false; // Guest goes second
+    isMyTurn = false;
     setupConnectionListeners();
   }
 });
@@ -344,6 +472,10 @@ document.getElementById('connect-btn').addEventListener('click', () => {
 function setupConnectionListeners() {
   conn.on('open', () => {
     document.getElementById('status').innerText = 'Connected to Peer!';
+    conn.send({
+      type: 'SYNC_QUEUE',
+      queue: nextQueue
+    });
     updateMainGame();
   });
 
@@ -351,15 +483,19 @@ function setupConnectionListeners() {
     if (data.type === 'INIT_GAME') {
       activeFeaturedShapes = data.shapes;
       renderFeaturedShapes();
+      if (data.queue) renderOpponentQueue(data.queue);
+    } else if (data.type === 'SYNC_QUEUE') {
+      if (data.queue) renderOpponentQueue(data.queue);
     } else if (data.type === 'PLAYER_MOVE') {
-      boardState[data.index] = data.block;
-      
-      // Also check shapes on board from opponent's view just in case, and update opponent's score
-      checkAndClearShapes();
+      boardState.splice(0, boardState.length, ...data.board);
       opponentScore = data.senderScore;
+      if (data.queue) renderOpponentQueue(data.queue);
       
-      isMyTurn = true;
-      updateMainGame();
+      updateScoreboard();
+      if (!isGameOver) {
+        isMyTurn = true;
+        updateMainGame();
+      }
     }
   });
 
@@ -369,7 +505,7 @@ function setupConnectionListeners() {
   });
 }
 
-// Initial Boot (Host will randomize on connection, Guest receives via INIT_GAME)
+// Initial Boot
 randomizeFeaturedShapes();
 initQueue();
 createMainGrid();

@@ -14,7 +14,7 @@
   <!-- Left Panel: Featured Shapes & Simultaneous Scores -->
   <div class="container">
     <h2>Featured Shapes</h2>
-    <p class="instruction-text">Match these shapes on the board to score! (Sum × Count)</p>
+    <p class="instruction-text">First to 500 points wins! Match shapes to score.</p>
     
     <div id="featured-shapes-container" class="featured-container">
       <!-- Populated dynamically -->
@@ -26,6 +26,9 @@
       </div>
       <div class="score-card">
         <span>Opponent:</span> <span id="opponent-score">0</span>
+        <div id="opponent-queue-preview" class="mini-queue-preview">
+          <!-- Opponent's next 3 blocks shown here -->
+        </div>
       </div>
     </div>
   </div>
@@ -51,7 +54,33 @@
       <div id="grid" class="grid main-grid"></div>
     </div>
 
-    <button id="submit-turn-btn" class="full-width-btn" disabled>Submit & End Turn</button>
+    <!-- Turn Action Buttons -->
+    <div id="action-controls">
+      <button id="submit-turn-btn" class="full-width-btn" disabled>Submit & End Turn</button>
+    </div>
+
+    <!-- Pattern Activation Modal -->
+    <div id="activation-modal" class="activation-modal hidden">
+      <div class="activation-content">
+        <h3>Pattern Detected!</h3>
+        <p id="activation-desc">You completed a shape! Choose whether to collect your points or keep your blocks on the board.</p>
+        <div id="detected-patterns-list" class="detected-list"></div>
+        <div class="activation-buttons">
+          <button id="collect-btn" class="collect-action-btn">Collect Points & Clear</button>
+          <button id="keep-btn" class="keep-action-btn">Keep Blocks (Skip)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="game-over-modal" class="activation-modal hidden">
+      <div class="activation-content">
+        <h3 id="game-over-title">Game Over!</h3>
+        <p id="game-over-desc">Player has reached 500 points and won the match!</p>
+        <button id="restart-btn" class="full-width-btn" onclick="location.reload()">Play Again</button>
+      </div>
+    </div>
+
   </div>
 
   <!-- Right Panel: Next 3 Blocks Queue -->
