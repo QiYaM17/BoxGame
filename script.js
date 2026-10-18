@@ -7,12 +7,19 @@ let conn = null;
 
 let myScore = 0;
 let opponentScore = 0;
-let isMyTurn = false; // Host starts first
+let isMyTurn = false;
+let hasPlacedBlockThisTurn = false;
 let isGameOver = false;
+
+// Undo State Tracking
+let lastPlacedInfo = null; // { index, block, queueIndex }
+
+// Manual Tile Selection Claim Mode
+let isClaimMode = false;
+let selectedClaimIndices = [];
 
 const boardState = Array(GRID_SIZE * GRID_SIZE).fill(null);
 let nextQueue = [];
-let pendingMatches = []; 
 
 // Fewer, vibrant colors + Rainbow wildcard
 const ALLOWED_COLORS = [
@@ -21,6 +28,66 @@ const ALLOWED_COLORS = [
   { name: 'Green', code: '#22c55e' },
   { name: 'Yellow', code: '#eab308' }
 ];
+
+// Web Audio API Sound Synthesizer
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(type) {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  const now = audioCtx.currentTime;
+
+  if (type === 'click') {
+    osc.frequency.setValueAtTime(300, now);
+    gain.gain.setValueAtTime(0.05, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    osc.start(now);
+    osc.stop(now + 0.05);
+  } else if (type === 'place') {
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(350, now);
+    osc.frequency.exponentialRampToValueAtTime(700, now + 0.1);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  } else if (type === 'undo') {
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(500, now);
+    osc.frequency.exponentialRampToValueAtTime(250, now + 0.1);
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  } else if (type === 'claim') {
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(523.25, now); // C5
+    osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
+    osc.frequency.setValueAtTime(783.99, now + 0.16); // G5
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  } else if (type === 'win') {
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.setValueAtTime(554.37, now + 0.1);
+    osc.frequency.setValueAtTime(659.25, now + 0.2);
+    osc.frequency.setValueAtTime(880, now + 0.3);
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    osc.start(now);
+    osc.stop(now + 0.6);
+  }
+}
 
 // Helper to normalize offset coordinates
 function normalizeOffsets(offsets) {
@@ -125,10 +192,42 @@ function createMainGrid() {
       tile.textContent = block.value;
     }
 
+    // Highlight selected claim tiles in claim mode
+    if (isClaimMode && selectedClaimIndices.includes(i)) {
+      tile.classList.add('claim-selected');
+    }
+
     tile.addEventListener('click', () => {
       if (isGameOver) return;
+      
+      // Prevent clicking or selecting tiles when it is not your turn
       if (!isMyTurn) {
         alert("Not your turn!");
+        return;
+      }
+
+      playSound('click');
+
+      // MODE 1: Manual Tile Selection for Pattern Claiming
+      if (isClaimMode) {
+        if (boardState[i] === null) {
+          alert("Cannot select empty tiles for pattern claiming.");
+          return;
+        }
+        const idxInList = selectedClaimIndices.indexOf(i);
+        if (idxInList > -1) {
+          selectedClaimIndices.splice(idxInList, 1);
+        } else {
+          selectedClaimIndices.push(i);
+        }
+        updateClaimVerifyBar();
+        createMainGrid();
+        return;
+      }
+
+      // MODE 2: Placing a new block during your turn (Max 1 block per turn)
+      if (hasPlacedBlockThisTurn) {
+        alert("You already placed 1 block this turn! You can undo, claim patterns, or End Turn.");
         return;
       }
       if (boardState[i] !== null) {
@@ -144,14 +243,216 @@ function createMainGrid() {
       tile.classList.add('selected');
       selectedTileIndex = i;
 
-      document.getElementById('submit-turn-btn').disabled = false;
+      // Place block and record for undo
+      const chosenBlock = nextQueue[selectedQueueIndex];
+      boardState[selectedTileIndex] = chosenBlock;
+      hasPlacedBlockThisTurn = true;
+
+      lastPlacedInfo = {
+        index: selectedTileIndex,
+        block: chosenBlock,
+        queueIndex: selectedQueueIndex
+      };
+
+      // Replenish queue immediately
+      nextQueue.splice(selectedQueueIndex, 1);
+      nextQueue.push(createNewBlock());
+
+      selectedQueueIndex = null;
+      selectedTileIndex = null;
+      playSound('place');
+
+      createMainGrid();
+      renderQueue();
+      document.getElementById('end-turn-btn').disabled = false;
+      document.getElementById('undo-btn').disabled = false;
     });
 
     gridContainer.appendChild(tile);
   }
 }
 
-// Render 3 Distinct Featured Shapes in Left Panel using a uniform 3x3 grid
+// Toggle Claim Mode on/off (Restricted to player's turn)
+document.getElementById('toggle-claim-mode-btn').addEventListener('click', () => {
+  if (isGameOver) return;
+  
+  if (!isMyTurn) {
+    alert("You can only select and claim patterns during your turn!");
+    return;
+  }
+
+  playSound('click');
+  isClaimMode = !isClaimMode;
+  selectedClaimIndices = [];
+
+  const claimBtn = document.getElementById('toggle-claim-mode-btn');
+  const verifyBar = document.getElementById('claim-verify-bar');
+
+  if (isClaimMode) {
+    claimBtn.innerText = "Cancel Pattern Mode";
+    claimBtn.classList.add('active');
+    verifyBar.classList.remove('hidden');
+    document.getElementById('turn-banner').innerText = "Select Pattern: Tap the tiles on the board that form a featured shape.";
+    document.getElementById('turn-banner').className = "turn-banner your-turn";
+  } else {
+    claimBtn.innerText = "Select Pattern";
+    claimBtn.classList.remove('active');
+    verifyBar.classList.add('hidden');
+    updateTurnUI();
+  }
+  createMainGrid();
+});
+
+document.getElementById('cancel-claim-btn').addEventListener('click', () => {
+  playSound('click');
+  isClaimMode = false;
+  selectedClaimIndices = [];
+  document.getElementById('toggle-claim-mode-btn').innerText = "Select Pattern";
+  document.getElementById('toggle-claim-mode-btn').classList.remove('active');
+  document.getElementById('claim-verify-bar').classList.add('hidden');
+  updateTurnUI();
+  createMainGrid();
+});
+
+function updateClaimVerifyBar() {
+  const count = selectedClaimIndices.length;
+  document.getElementById('claim-status-text').innerText = `Selected ${count} tile(s)`;
+}
+
+// Verify Selected Tiles Against Active Featured Shapes
+document.getElementById('verify-claim-btn').addEventListener('click', () => {
+  if (!isMyTurn) {
+    alert("Not your turn!");
+    return;
+  }
+
+  if (selectedClaimIndices.length === 0) {
+    alert("Please select tiles on the board first.");
+    return;
+  }
+
+  // Convert selected indices into relative coordinate offsets
+  let coords = selectedClaimIndices.map(idx => ({
+    r: Math.floor(idx / GRID_SIZE),
+    c: idx % GRID_SIZE,
+    idx: idx,
+    block: boardState[idx]
+  }));
+
+  let minR = Math.min(...coords.map(o => o.r));
+  let minC = Math.min(...coords.map(o => o.c));
+  let userOffsets = coords.map(o => ({ r: o.r - minR, c: o.c - minC }));
+  userOffsets.sort((a, b) => a.r - b.r || a.c - b.c);
+
+  let matchedShape = null;
+
+  // Check if userOffsets match any active featured shape orientation
+  for (let shape of activeFeaturedShapes) {
+    for (let orientation of shape.orientations) {
+      if (orientation.length !== userOffsets.length) continue;
+      let matches = true;
+      for (let i = 0; i < orientation.length; i++) {
+        if (orientation[i].r !== userOffsets[i].r || orientation[i].c !== userOffsets[i].c) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
+        matchedShape = shape;
+        break;
+      }
+    }
+    if (matchedShape) break;
+  }
+
+  if (!matchedShape) {
+    alert("Selected pattern does not match any active featured shape!");
+    return;
+  }
+
+  // Validate color matching rules (respecting Rainbow wildcard)
+  let blocks = coords.map(o => o.block);
+  let baseColor = null;
+  let isColorMatch = true;
+
+  for (let block of blocks) {
+    if (!block.isRainbow) {
+      if (baseColor === null) {
+        baseColor = block.color;
+      } else if (baseColor !== block.color) {
+        isColorMatch = false;
+        break;
+      }
+    }
+  }
+
+  if (!isColorMatch) {
+    alert("Color mismatch! Blocks must share the same color or use Rainbow wildcards.");
+    return;
+  }
+
+  // Success! Calculate points: (Sum of block values) * count
+  let sumValues = blocks.reduce((acc, b) => acc + b.value, 0);
+  let pointsEarned = sumValues * blocks.length;
+
+  myScore += pointsEarned;
+  playSound('claim');
+
+  // Clear tiles
+  selectedClaimIndices.forEach(idx => {
+    const tileEl = document.querySelector(`.main-grid .tile[data-index="${idx}"]`);
+    if (tileEl) {
+      tileEl.classList.add('clearing-animation');
+    }
+    boardState[idx] = null;
+  });
+
+  // Reset Claim Mode
+  isClaimMode = false;
+  selectedClaimIndices = [];
+  document.getElementById('toggle-claim-mode-btn').innerText = "Select Pattern";
+  document.getElementById('toggle-claim-mode-btn').classList.remove('active');
+  document.getElementById('claim-verify-bar').classList.add('hidden');
+
+  setTimeout(() => {
+    createMainGrid();
+    updateScoreboard();
+    updateTurnUI();
+  }, 400);
+
+  if (conn && conn.open) {
+    conn.send({
+      type: 'PLAYER_CLAIM',
+      senderScore: myScore,
+      board: boardState
+    });
+  }
+});
+
+// Undo Placement Handler
+document.getElementById('undo-btn').addEventListener('click', () => {
+  if (!isMyTurn || !hasPlacedBlockThisTurn || !lastPlacedInfo || isGameOver) return;
+  playSound('undo');
+
+  // Remove block from board
+  boardState[lastPlacedInfo.index] = null;
+
+  // Put block back into queue at original index
+  nextQueue.pop(); // remove newly generated random block
+  nextQueue.splice(lastPlacedInfo.queueIndex, 0, lastPlacedInfo.block);
+
+  hasPlacedBlockThisTurn = false;
+  lastPlacedInfo = null;
+
+  document.getElementById('end-turn-btn').disabled = true;
+  document.getElementById('undo-btn').disabled = true;
+
+  createMainGrid();
+  renderQueue();
+  updateTurnUI();
+});
+
+// Render 3 Distinct Featured Shapes in Left Panel
 function renderFeaturedShapes() {
   const container = document.getElementById('featured-shapes-container');
   container.innerHTML = '';
@@ -208,6 +509,11 @@ function renderQueue() {
 
     blockEl.addEventListener('click', () => {
       if (isGameOver || !isMyTurn) return;
+      if (hasPlacedBlockThisTurn) {
+        alert("You already placed your block this turn! Undo first if you want to switch blocks.");
+        return;
+      }
+      playSound('click');
       selectedQueueIndex = index;
       renderQueue();
     });
@@ -236,76 +542,10 @@ function renderOpponentQueue(queueData) {
   });
 }
 
-// Detect completed featured shapes that include the newly placed block index
-function detectCompletedShapes(placedIndex) {
-  let foundMatches = [];
-  let claimedIndices = new Set();
-
-  activeFeaturedShapes.forEach(shape => {
-    shape.orientations.forEach(offsets => {
-      for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-          let validFit = true;
-          let shapeBlocks = [];
-          let shapeIndices = [];
-
-          for (let offset of offsets) {
-            let tr = r + offset.r;
-            let tc = c + offset.c;
-            if (tr >= GRID_SIZE || tc >= GRID_SIZE) {
-              validFit = false;
-              break;
-            }
-            let idx = tr * GRID_SIZE + tc;
-            if (boardState[idx] === null || claimedIndices.has(idx)) {
-              validFit = false;
-              break;
-            }
-            shapeBlocks.push(boardState[idx]);
-            shapeIndices.push(idx);
-          }
-
-          if (validFit && shapeBlocks.length === offsets.length && shapeIndices.includes(placedIndex)) {
-            let baseColor = null;
-            let isMatch = true;
-
-            for (let block of shapeBlocks) {
-              if (!block.isRainbow) {
-                if (baseColor === null) {
-                  baseColor = block.color;
-                } else if (baseColor !== block.color) {
-                  isMatch = false;
-                  break;
-                }
-              }
-            }
-
-            if (isMatch) {
-              let sumValues = shapeBlocks.reduce((acc, b) => acc + b.value, 0);
-              let points = sumValues * shapeBlocks.length;
-              
-              foundMatches.push({
-                shapeName: shape.name,
-                points: points,
-                indices: shapeIndices
-              });
-
-              shapeIndices.forEach(idx => claimedIndices.add(idx));
-            }
-          }
-        }
-      }
-    });
-  });
-
-  return foundMatches;
-}
-
 function updateScoreboard() {
   document.getElementById('my-score').innerText = myScore;
   document.getElementById('opponent-score').innerText = opponentScore;
 
-  // Check Win Condition (First to 500)
   if (!isGameOver) {
     if (myScore >= WINNING_SCORE) {
       triggerGameOver("You Won the Match!");
@@ -317,29 +557,51 @@ function updateScoreboard() {
 
 function triggerGameOver(message) {
   isGameOver = true;
+  playSound('win');
   document.getElementById('game-over-title').innerText = message;
   document.getElementById('game-over-desc').innerText = `Final Score — You: ${myScore} | Opponent: ${opponentScore}`;
   document.getElementById('game-over-modal').classList.remove('hidden');
-  document.getElementById('submit-turn-btn').disabled = true;
+  document.getElementById('end-turn-btn').disabled = true;
+  document.getElementById('undo-btn').disabled = true;
 }
 
 function updateTurnUI() {
   if (isGameOver) return;
   const banner = document.getElementById('turn-banner');
   if (isMyTurn) {
-    banner.innerText = "Your Turn! Place a block.";
+    banner.innerText = "Your Turn! Place 1 block or claim patterns.";
     banner.className = "turn-banner your-turn";
   } else {
     banner.innerText = "Opponent's Turn... Please wait.";
     banner.className = "turn-banner opponent-turn";
+    // Force exit claim mode if active when turn ends
+    if (isClaimMode) {
+      isClaimMode = false;
+      selectedClaimIndices = [];
+      document.getElementById('toggle-claim-mode-btn').innerText = "Select Pattern";
+      document.getElementById('toggle-claim-mode-btn').classList.remove('active');
+      document.getElementById('claim-verify-bar').classList.add('hidden');
+    }
   }
 }
 
-// Complete turn and send update to peer
-function finalizeTurn() {
+// End Turn Handler
+document.getElementById('end-turn-btn').addEventListener('click', () => {
+  if (isGameOver || !isMyTurn) return;
+  playSound('click');
+
+  hasPlacedBlockThisTurn = false;
+  lastPlacedInfo = null;
   selectedQueueIndex = null;
   selectedTileIndex = null;
-  document.getElementById('submit-turn-btn').disabled = true;
+  isClaimMode = false;
+  selectedClaimIndices = [];
+
+  document.getElementById('end-turn-btn').disabled = true;
+  document.getElementById('undo-btn').disabled = true;
+  document.getElementById('claim-verify-bar').classList.add('hidden');
+  document.getElementById('toggle-claim-mode-btn').innerText = "Select Pattern";
+  document.getElementById('toggle-claim-mode-btn').classList.remove('active');
 
   isMyTurn = false;
   updateMainGame();
@@ -352,91 +614,12 @@ function finalizeTurn() {
       queue: nextQueue
     });
   }
-}
-
-// Submit Turn Handler
-document.getElementById('submit-turn-btn').addEventListener('click', () => {
-  if (isGameOver || !isMyTurn || selectedQueueIndex === null || selectedTileIndex === null) return;
-
-  const chosenBlock = nextQueue[selectedQueueIndex];
-  const targetIndex = selectedTileIndex;
-  boardState[targetIndex] = chosenBlock;
-
-  // Replenish queue
-  nextQueue.splice(selectedQueueIndex, 1);
-  nextQueue.push(createNewBlock());
-
-  // Check if pattern completed using final placed block
-  pendingMatches = detectCompletedShapes(targetIndex);
-
-  if (pendingMatches.length > 0) {
-    showActivationModal(pendingMatches);
-  } else {
-    finalizeTurn();
-  }
-});
-
-// Show Pattern Activation Modal
-function showActivationModal(matches) {
-  const modal = document.getElementById('activation-modal');
-  const listContainer = document.getElementById('detected-patterns-list');
-  listContainer.innerHTML = '';
-
-  let totalPoints = 0;
-  matches.forEach(m => {
-    totalPoints += m.points;
-    const item = document.createElement('div');
-    item.classList.add('detected-item');
-    item.innerHTML = `<span>✨ <strong>${m.shapeName}</strong></span><span class="badge-pts">+${m.points} pts</span>`;
-    listContainer.appendChild(item);
-  });
-
-  document.getElementById('activation-desc').innerText = `You completed ${matches.length} pattern(s) with your placement, worth ${totalPoints} total points! Choose whether to collect points and clear blocks, or keep blocks on the board.`;
-  modal.classList.remove('hidden');
-}
-
-// Handle "Collect Points & Clear"
-document.getElementById('collect-btn').addEventListener('click', () => {
-  let earnedPoints = 0;
-  let allIndicesToClear = new Set();
-
-  pendingMatches.forEach(m => {
-    earnedPoints += m.points;
-    m.indices.forEach(idx => allIndicesToClear.add(idx));
-  });
-
-  myScore += earnedPoints;
-
-  allIndicesToClear.forEach(idx => {
-    const tileEl = document.querySelector(`.main-grid .tile[data-index="${idx}"]`);
-    if (tileEl) {
-      tileEl.classList.add('clearing-animation');
-    }
-    boardState[idx] = null;
-  });
-
-  setTimeout(() => {
-    document.getElementById('activation-modal').classList.add('hidden');
-    createMainGrid();
-    updateScoreboard();
-    if (!isGameOver) {
-      finalizeTurn();
-    }
-  }, 400);
-});
-
-// Handle "Keep Blocks (Skip)"
-document.getElementById('keep-btn').addEventListener('click', () => {
-  document.getElementById('activation-modal').classList.add('hidden');
-  updateScoreboard();
-  if (!isGameOver) {
-    finalizeTurn();
-  }
 });
 
 function updateMainGame() {
   createMainGrid();
   renderQueue();
+  renderFeaturedShapes();
   updateScoreboard();
   updateTurnUI();
 }
@@ -494,8 +677,14 @@ function setupConnectionListeners() {
       updateScoreboard();
       if (!isGameOver) {
         isMyTurn = true;
+        hasPlacedBlockThisTurn = false;
+        lastPlacedInfo = null;
         updateMainGame();
       }
+    } else if (data.type === 'PLAYER_CLAIM') {
+      boardState.splice(0, boardState.length, ...data.board);
+      opponentScore = data.senderScore;
+      updateMainGame();
     }
   });
 

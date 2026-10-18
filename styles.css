@@ -80,16 +80,22 @@ button {
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
 }
 
 button:hover {
   background-color: #4338ca;
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
 }
 
 button:disabled {
   background-color: #9ca3af;
   cursor: not-allowed;
+  transform: none;
 }
 
 .status-msg {
@@ -107,6 +113,7 @@ button:disabled {
   border-radius: 6px;
   margin-bottom: 14px;
   font-size: 0.9rem;
+  animation: fadeIn 0.3s ease;
 }
 
 .turn-banner.waiting { background: #fef3c7; color: #b45309; }
@@ -123,7 +130,7 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(var(--grid-size, 5), 1fr);
   gap: 6px;
-  width: 100%;
+  width: 50%;
   max-width: 320px;
   aspect-ratio: 1;
   margin: 0 auto;
@@ -133,7 +140,7 @@ button:disabled {
   background-color: #e5e7eb;
   border-radius: 6px;
   cursor: pointer;
-  transition: transform 0.1s, border-color 0.2s;
+  transition: transform 0.15s ease, background-color 0.2s ease;
   border: 2px solid transparent;
   aspect-ratio: 1 / 1;
   display: flex;
@@ -144,6 +151,12 @@ button:disabled {
   font-weight: bold;
   color: #111827;
   user-select: none;
+  animation: popIn 0.2s ease;
+}
+
+@keyframes popIn {
+  0% { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .tile:hover {
@@ -153,7 +166,15 @@ button:disabled {
 .tile.selected {
   border-color: #4f46e5;
   transform: scale(0.95);
-  box-shadow: 0 0 8px rgba(79, 70, 229, 0.4);
+  box-shadow: 0 0 10px rgba(79, 70, 229, 0.4);
+}
+
+/* Claim Mode Selected Tile Highlight */
+.tile.claim-selected {
+  border-color: #10b981 !important;
+  background-color: #a7f3d0 !important;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+  transform: scale(1.05);
 }
 
 /* Clearing Animation for Completed Shapes */
@@ -172,7 +193,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .shape-preview-box {
@@ -195,7 +216,7 @@ button:disabled {
 .mini-grid {
   display: grid;
   gap: 3px;
-  width: 75px;
+  width: 65px;
   aspect-ratio: 1;
 }
 
@@ -203,6 +224,94 @@ button:disabled {
   background-color: #e2e8f0;
   border-radius: 3px;
   aspect-ratio: 1/1;
+}
+
+/* Claim Mode Panel */
+.claim-mode-panel {
+  margin-bottom: 16px;
+}
+
+.claim-mode-btn {
+  background-color: #10b981;
+  width: 100%;
+  padding: 10px;
+  font-weight: bold;
+}
+
+.claim-mode-btn:hover {
+  background-color: #059669;
+}
+
+.claim-mode-btn.active {
+  background-color: #ef4444;
+}
+
+.claim-mode-btn.active:hover {
+  background-color: #dc2626;
+}
+
+/* Claim Verify Bar */
+.claim-verify-bar {
+  background: #ecfdf5;
+  border: 1px solid #10b981;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+  margin-top: 8px;
+  font-weight: bold;
+}
+
+.claim-verify-bar.hidden {
+  display: none;
+}
+
+.verify-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.collect-action-btn {
+  background-color: #10b981;
+  flex: 1;
+}
+
+.collect-action-btn:hover {
+  background-color: #059669;
+}
+
+.keep-action-btn {
+  background-color: #64748b;
+  flex: 1;
+}
+
+.keep-action-btn:hover {
+  background-color: #475569;
+}
+
+/* Action Controls Group */
+.action-controls-group {
+  display: flex;
+  gap: 8px;
+}
+
+.primary-btn {
+  flex: 1;
+  background-color: #4f46e5;
+  padding: 12px;
+}
+
+.secondary-btn {
+  flex: 1;
+  background-color: #f59e0b;
+  padding: 12px;
+}
+
+.secondary-btn:hover {
+  background-color: #d97706;
 }
 
 /* Scoreboard */
@@ -261,7 +370,7 @@ button:disabled {
   align-items: center;
   cursor: pointer;
   border: 2px solid transparent;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   color: #111827;
   font-weight: bold;
   font-family: monospace;
@@ -303,7 +412,7 @@ button:disabled {
   padding: 12px;
 }
 
-/* Pattern Activation Modal & Game Over Modal Styling */
+/* Game Over Modal Styling */
 .activation-modal {
   position: absolute;
   top: 0;
@@ -332,6 +441,7 @@ button:disabled {
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(0,0,0,0.2);
   text-align: center;
+  animation: popIn 0.3s ease;
 }
 
 .activation-content h3 {
@@ -344,56 +454,4 @@ button:disabled {
   font-size: 0.85rem;
   color: #64748b;
   margin-bottom: 16px;
-}
-
-.detected-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 20px;
-  max-height: 140px;
-  overflow-y: auto;
-}
-
-.detected-item {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  padding: 10px 14px;
-  border-radius: 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.9rem;
-}
-
-.badge-pts {
-  background: #d1fae5;
-  color: #065f46;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-weight: bold;
-  font-size: 0.8rem;
-}
-
-.activation-buttons {
-  display: flex;
-  gap: 10px;
-}
-
-.collect-action-btn {
-  background-color: #10b981;
-  flex: 1;
-}
-
-.collect-action-btn:hover {
-  background-color: #059669;
-}
-
-.keep-action-btn {
-  background-color: #64748b;
-  flex: 1;
-}
-
-.keep-action-btn:hover {
-  background-color: #475569;
 }

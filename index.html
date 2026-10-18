@@ -14,10 +14,15 @@
   <!-- Left Panel: Featured Shapes & Simultaneous Scores -->
   <div class="container">
     <h2>Featured Shapes</h2>
-    <p class="instruction-text">First to 500 points wins! Match shapes to score.</p>
+    <p class="instruction-text">First to 500 points wins! Select any tiles on the board to claim patterns during your turn.</p>
     
     <div id="featured-shapes-container" class="featured-container">
       <!-- Populated dynamically -->
+    </div>
+
+    <!-- General Select Pattern Action -->
+    <div id="claim-mode-container" class="claim-mode-panel">
+      <button id="toggle-claim-mode-btn" class="claim-mode-btn">Select Pattern</button>
     </div>
 
     <div class="score-board">
@@ -54,21 +59,18 @@
       <div id="grid" class="grid main-grid"></div>
     </div>
 
-    <!-- Turn Action Buttons -->
-    <div id="action-controls">
-      <button id="submit-turn-btn" class="full-width-btn" disabled>Submit & End Turn</button>
+    <!-- Turn Action Buttons & Undo -->
+    <div id="action-controls" class="action-controls-group">
+      <button id="undo-btn" class="secondary-btn" disabled>Undo Placement</button>
+      <button id="end-turn-btn" class="primary-btn" disabled>End Turn</button>
     </div>
 
-    <!-- Pattern Activation Modal -->
-    <div id="activation-modal" class="activation-modal hidden">
-      <div class="activation-content">
-        <h3>Pattern Detected!</h3>
-        <p id="activation-desc">You completed a shape! Choose whether to collect your points or keep your blocks on the board.</p>
-        <div id="detected-patterns-list" class="detected-list"></div>
-        <div class="activation-buttons">
-          <button id="collect-btn" class="collect-action-btn">Collect Points & Clear</button>
-          <button id="keep-btn" class="keep-action-btn">Keep Blocks (Skip)</button>
-        </div>
+    <!-- Claim Verification Bar (Shows when selecting tiles in claim mode) -->
+    <div id="claim-verify-bar" class="claim-verify-bar hidden">
+      <span id="claim-status-text">Selected 0 tiles</span>
+      <div class="verify-btns">
+        <button id="verify-claim-btn" class="collect-action-btn">Claim Pattern</button>
+        <button id="cancel-claim-btn" class="keep-action-btn">Cancel</button>
       </div>
     </div>
 
@@ -86,7 +88,7 @@
   <!-- Right Panel: Next 3 Blocks Queue -->
   <div class="container">
     <h2>Next Blocks</h2>
-    <p class="instruction-text">Pick one block per turn from your upcoming queue:</p>
+    <p class="instruction-text">Pick 1 block per turn from your queue:</p>
     
     <div id="next-queue" class="next-queue-container">
       <!-- Populated dynamically -->
